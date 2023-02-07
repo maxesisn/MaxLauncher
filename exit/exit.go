@@ -3,6 +3,7 @@ package exit
 import (
 	"fmt"
 	"github.com/gosuri/uilive"
+	"os"
 	"time"
 )
 
@@ -11,9 +12,10 @@ func LauncherExit(err error) {
 	writer.Start()
 
 	stayTime := 3
-
+	exitCode := 0
 	if err != nil {
 		stayTime = 10
+		exitCode = 1
 	}
 
 	for i := stayTime; i > 0; i-- {
@@ -24,4 +26,5 @@ func LauncherExit(err error) {
 		}
 		time.Sleep(time.Second)
 	}
+	os.Exit(exitCode)
 }

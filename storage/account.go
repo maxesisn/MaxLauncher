@@ -25,8 +25,11 @@ func LoadNonce() []byte {
 		exit.LauncherExit(err)
 	}
 	nonce := make([]byte, 24)
-	nonceFile, err := os.Open(dirname + "/.config/MaxLauncherData/IV.dat")
+
+	_ = os.MkdirAll(filepath.Join(dirname, ".config", "MaxLauncherData"), os.ModePerm)
+	nonceFile, err := os.Open(filepath.Join(dirname, ".config", "MaxLauncherData", "IV.dat"))
 	if err != nil {
+		nonceFile, err = os.Create(filepath.Join(dirname, ".config", "MaxLauncherData", "IV.dat"))
 		_, err = rand.Read(nonce)
 		if err != nil {
 			log.Error("随机数生成失败。")
@@ -71,7 +74,7 @@ func SaveAccount(profile auth.Profile) {
 		log.Error("无法创建数据目录。")
 		exit.LauncherExit(err)
 	}
-	profileFile, err := os.OpenFile(dirname+"/account.enc", os.O_CREATE|os.O_WRONLY, 0644)
+	profileFile, err := os.OpenFile(filepath.Join(dirname, "account.enc"), os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		log.Error("无法操作账户数据文件。")
 		exit.LauncherExit(err)
