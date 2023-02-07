@@ -35,8 +35,8 @@ func main() {
 
 	if !remoteConf.IsPure {
 		log.Info("配置为模组服，开始模组列表检查...")
-		launcher.CheckRequiredMods()
 		launcher.CheckRejectedMods()
+		launcher.CheckRequiredMods()
 		log.Info("模组列表检查完成。")
 	} else {
 		log.Info("配置为纯净服，跳过模组列表检查。")

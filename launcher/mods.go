@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -19,7 +20,7 @@ var modsRemoteUrl = "https://modget.maxng.cc:8086/" + GetUpdateChan() + "/mods.j
 type Mod struct {
 	Name string `json:"name"`
 	Hash string `json:"hash"`
-	URL  string `json:"url"`
+	URL  string `json:"url,omitempty"`
 }
 
 type ModConf struct {
@@ -87,7 +88,7 @@ func getLocalMods() []Mod {
 			fileObj, _ := os.Open(filepath.Join(dirname, file.Name()))
 			fileBytes, _ := io.ReadAll(fileObj)
 			hash := xxhash.Sum64(fileBytes)
-			localMods = append(localMods, Mod{Name: file.Name(), Hash: fmt.Sprintf("%x", hash)})
+			localMods = append(localMods, Mod{Name: file.Name(), Hash: fmt.Sprintf("%016s", strconv.FormatUint(hash, 16))})
 		}
 	}
 	return localMods
@@ -95,6 +96,11 @@ func getLocalMods() []Mod {
 
 func downloadMod(mod Mod) {
 	client := http.Client{}
+
+	if mod.URL == "" {
+		mod.URL = "https://modget.maxng.cc:8086/" + GetUpdateChan() + "/mods/" + mod.Name
+	}
+
 	resp, err := client.Get(mod.URL)
 	if err != nil {
 		log.Error("无法连接到更新服务器。")
@@ -107,27 +113,25 @@ func downloadMod(mod Mod) {
 		}
 	}(resp.Body)
 
-	bar := progressbar.DefaultBytes(
-		resp.ContentLength,
-		"downloading",
-	)
-
-	f := filepath.Join(".minecraft", "mods", mod.Name)
-	file, err := os.Create(f)
+	ex, err := os.Executable()
 	if err != nil {
 		exit.LauncherExit(err)
 	}
-	defer func(file *os.File) {
-		err := file.Close()
+	dirname := filepath.Dir(ex)
+	dirname = filepath.Join(dirname, ".minecraft", "mods")
+	file, err := os.Create(filepath.Join(dirname, mod.Name))
+	if err != nil {
+		exit.LauncherExit(err)
+	}
+
+	_, _ = io.Copy(file, resp.Body)
+
+	defer func(File *os.File) {
+		err := File.Close()
 		if err != nil {
 			exit.LauncherExit(err)
 		}
 	}(file)
-
-	_, err = io.Copy(file, io.TeeReader(resp.Body, bar))
-	if err != nil {
-		exit.LauncherExit(err)
-	}
 }
 
 func CheckRequiredMods() {
@@ -154,17 +158,19 @@ func CheckRequiredMods() {
 		log.Warn("以下Mod未安装或版本不正确：")
 		t := table.NewWriter()
 		t.SetOutputMirror(os.Stdout)
-		t.SetStyle(table.StyleColoredBlueWhiteOnBlack)
 		t.AppendHeader(table.Row{"Mod Name", "Mod Hash"})
 		for _, mod := range lackMods {
 			t.AppendRow(table.Row{mod.Name, mod.Hash})
-			t.AppendSeparator()
 		}
+		t.AppendSeparator()
 		t.Render()
 		log.Info("正在下载缺失Mod...")
+		progress := progressbar.Default(int64(len(lackMods)))
 		for _, mod := range lackMods {
 			downloadMod(mod)
+			progress.Add(1)
 		}
+		progress.Finish()
 	} else {
 		log.Info("所有必要Mod已安装。")
 	}
@@ -178,13 +184,13 @@ func CheckRejectedMods() {
 	for _, mod := range remoteConf.Rejected {
 		RejModHashes = append(RejModHashes, mod.Hash)
 	}
-	var LocalModHashes []string
+	var localModHashes []string
 	for _, mod := range localMods {
-		LocalModHashes = append(LocalModHashes, mod.Hash)
+		localModHashes = append(localModHashes, mod.Hash)
 	}
-	diffModHashes := difference(RejModHashes, LocalModHashes)
+
 	for _, mod := range remoteConf.Rejected {
-		for _, hash := range diffModHashes {
+		for _, hash := range localModHashes {
 			if mod.Hash == hash {
 				rejectMods = append(rejectMods, mod)
 			}
@@ -194,30 +200,24 @@ func CheckRejectedMods() {
 		log.Warn("服务器要求删除以下Mod：")
 		t := table.NewWriter()
 		t.SetOutputMirror(os.Stdout)
-		t.SetStyle(table.StyleColoredBlueWhiteOnBlack)
 		t.AppendHeader(table.Row{"Mod Name", "Mod Hash"})
 		for _, mod := range rejectMods {
 			t.AppendRow(table.Row{mod.Name, mod.Hash})
-			t.AppendSeparator()
 		}
+		t.AppendSeparator()
 		t.Render()
 
-		for _, mod := range rejectMods {
-			bar := progressbar.DefaultBytes(
-				1,
-				"deleting "+mod.Name,
-			)
-			_, err := io.Copy(io.Discard, io.TeeReader(strings.NewReader("1"), bar))
-			if err != nil {
-				exit.LauncherExit(err)
-			}
+		progress := progressbar.Default(int64(len(rejectMods)))
 
+		for _, mod := range rejectMods {
 			f := filepath.Join(".minecraft", "mods", mod.Name)
-			err = os.Remove(f)
+			err := os.Remove(f)
 			if err != nil {
 				exit.LauncherExit(err)
 			}
+			_ = progress.Add(1)
 		}
+		_ = progress.Finish()
 
 	} else {
 		log.Info("客户端不存在不允许安装的Mod。")

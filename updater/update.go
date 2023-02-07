@@ -2,10 +2,13 @@ package updater
 
 import (
 	"epminecraft-go/exit"
+	"epminecraft-go/logger"
 	"github.com/minio/selfupdate"
 	"io"
 	"net/http"
 )
+
+var log = logger.Logger()
 
 func DoUpdate(url string) {
 	resp, err := http.Get(url)
@@ -19,7 +22,12 @@ func DoUpdate(url string) {
 		}
 	}(resp.Body)
 	err = selfupdate.Apply(resp.Body, selfupdate.Options{})
+
 	if err != nil {
 		exit.LauncherExit(err)
 	}
+
+	log.Info("更新完成，请再次打开启动器以应用更新。")
+	exit.LauncherExit(nil)
+
 }
